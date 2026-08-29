@@ -1,0 +1,624 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NCLEX-RN Simulator (2026 Standards)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom styles to mimic official testing environment */
+        body {
+            user-select: none;
+            background-color: #f3f4f6;
+            font-family: Arial, Helvetica, sans-serif;
+        }
+        /* Disable standard text selection & copy-pasting for authentic exam feel */
+        .no-select {
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+            user-select: none;
+        }
+        .exam-border {
+            border: 1px solid #d1d5db;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+        }
+        /* Custom checkbox and radio styling for clinical clarity */
+        input[type="checkbox"], input[type="radio"] {
+            transform: scale(1.15);
+            cursor: pointer;
+        }
+        /* The scratchpad must remain typable even though the page disables selection */
+        #notes-modal textarea, #numeric-input, #calc-display {
+            -webkit-user-select: text;
+            -moz-user-select: text;
+            -ms-user-select: text;
+            user-select: text;
+        }
+    </style>
+</head>
+<body class="no-select h-screen flex flex-col justify-between overflow-hidden">
+
+    <header class="bg-[#1e293b] text-white px-6 py-3 flex justify-between items-center shadow-md select-none">
+        <div class="flex items-center space-x-4">
+            <h1 class="text-lg font-bold tracking-wider">NCLEX-RN&reg; Examination Simulator</h1>
+            <span class="text-xs bg-blue-600 px-2 py-1 rounded font-mono uppercase">2026 Next Gen Standards (NGN)</span>
+        </div>
+        <div class="flex items-center space-x-6 text-sm">
+            <div class="flex items-center space-x-2 bg-slate-800 px-3 py-1.5 rounded border border-slate-700">
+                <span class="text-slate-400 font-medium">Time Remaining:</span>
+                <span id="timer" class="font-mono font-bold text-amber-400 text-base">05:00:00</span>
+            </div>
+            <button onclick="toggleCalculator()" class="bg-slate-700 hover:bg-slate-600 px-3 py-1.5 rounded text-xs font-semibold transition border border-slate-600 flex items-center space-x-1.5">
+                <span>&#129518; Calculator</span>
+            </button>
+            <button onclick="toggleNotes()" class="bg-slate-700 hover:bg-slate-600 px-3 py-1.5 rounded text-xs font-semibold transition border border-slate-600 flex items-center space-x-1.5">
+                <span>&#128221; Notes</span>
+            </button>
+        </div>
+    </header>
+
+    <main class="flex-1 flex overflow-hidden p-4 max-w-7xl mx-auto w-full gap-4">
+
+        <section class="flex-1 bg-white exam-border rounded-lg flex flex-col overflow-hidden relative">
+
+            <div class="bg-slate-100 px-6 py-3 border-b border-slate-200 flex justify-between items-center text-sm text-slate-700 font-semibold">
+                <div>Item <span id="current-question-num">1</span> of <span id="total-questions">15</span></div>
+                <div id="question-type-badge" class="bg-indigo-100 text-indigo-800 text-xs px-2.5 py-1 rounded font-bold uppercase tracking-wide">Multiple Choice</div>
+            </div>
+
+            <div class="flex-1 overflow-y-auto p-8 space-y-6">
+
+                <div id="case-study-container" class="hidden bg-slate-50 border border-slate-300 rounded p-4 mb-4 text-sm space-y-3">
+                    <div class="font-bold text-slate-900 uppercase text-xs tracking-wider border-b pb-1">Clinical Case Exhibit / Nurses' Notes</div>
+                    <div id="case-study-text" class="text-slate-800 leading-relaxed space-y-2"></div>
+                </div>
+
+                <div id="question-stem" class="text-slate-900 text-base md:text-lg font-medium leading-relaxed">
+                    Loading question prompt...
+                </div>
+
+                <div id="options-container" class="space-y-3 pt-2">
+                    </div>
+            </div>
+
+            <div class="bg-slate-50 px-6 py-4 border-t border-slate-200 flex justify-between items-center">
+                <div class="text-xs text-slate-500 font-medium">
+                    Note: Once you click Next, you cannot return to previous items.
+                </div>
+                <div class="flex space-x-3">
+                    <button id="next-btn" onclick="handleNextQuestion()" class="bg-blue-700 hover:bg-blue-800 text-white px-6 py-2.5 rounded font-bold text-sm shadow transition tracking-wide">
+                        Next Item &rarr;
+                    </button>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <div id="calculator-modal" class="hidden fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+        <div class="bg-white rounded-lg shadow-2xl w-72 border border-slate-300 overflow-hidden">
+            <div class="bg-slate-800 text-white px-4 py-2 flex justify-between items-center text-sm font-bold">
+                <span>NCLEX Basic Calculator</span>
+                <button onclick="toggleCalculator()" class="text-slate-400 hover:text-white font-bold">&times;</button>
+            </div>
+            <div class="p-4">
+                <input type="text" id="calc-display" readonly class="w-full bg-slate-100 border border-slate-300 text-right text-xl font-mono p-2 mb-3 rounded text-slate-900" value="0">
+                <div class="grid grid-cols-4 gap-2">
+                    <button onclick="calcNum('7')" class="bg-slate-200 hover:bg-slate-300 p-2 rounded font-bold text-slate-800">7</button>
+                    <button onclick="calcNum('8')" class="bg-slate-200 hover:bg-slate-300 p-2 rounded font-bold text-slate-800">8</button>
+                    <button onclick="calcNum('9')" class="bg-slate-200 hover:bg-slate-300 p-2 rounded font-bold text-slate-800">9</button>
+                    <button onclick="calcOp('/')" class="bg-amber-100 hover:bg-amber-200 p-2 rounded font-bold text-amber-800">&divide;</button>
+
+                    <button onclick="calcNum('4')" class="bg-slate-200 hover:bg-slate-300 p-2 rounded font-bold text-slate-800">4</button>
+                    <button onclick="calcNum('5')" class="bg-slate-200 hover:bg-slate-300 p-2 rounded font-bold text-slate-800">5</button>
+                    <button onclick="calcNum('6')" class="bg-slate-200 hover:bg-slate-300 p-2 rounded font-bold text-slate-800">6</button>
+                    <button onclick="calcOp('*')" class="bg-amber-100 hover:bg-amber-200 p-2 rounded font-bold text-amber-800">&times;</button>
+
+                    <button onclick="calcNum('1')" class="bg-slate-200 hover:bg-slate-300 p-2 rounded font-bold text-slate-800">1</button>
+                    <button onclick="calcNum('2')" class="bg-slate-200 hover:bg-slate-300 p-2 rounded font-bold text-slate-800">2</button>
+                    <button onclick="calcNum('3')" class="bg-slate-200 hover:bg-slate-300 p-2 rounded font-bold text-slate-800">3</button>
+                    <button onclick="calcOp('-')" class="bg-amber-100 hover:bg-amber-200 p-2 rounded font-bold text-amber-800">-</button>
+
+                    <button onclick="calcNum('0')" class="bg-slate-200 hover:bg-slate-300 p-2 rounded font-bold text-slate-800">0</button>
+                    <button onclick="calcNum('.')" class="bg-slate-200 hover:bg-slate-300 p-2 rounded font-bold text-slate-800">.</button>
+                    <button onclick="calcEquals()" class="bg-blue-600 hover:bg-blue-700 text-white p-2 rounded font-bold">=</button>
+                    <button onclick="calcOp('+')" class="bg-amber-100 hover:bg-amber-200 p-2 rounded font-bold text-amber-800">+</button>
+                </div>
+                <button onclick="calcClear()" class="w-full mt-2 bg-red-100 hover:bg-red-200 text-red-700 p-1.5 rounded text-xs font-bold uppercase">Clear</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="notes-modal" class="hidden fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+        <div class="bg-white rounded-lg shadow-2xl w-96 border border-slate-300 overflow-hidden">
+            <div class="bg-slate-800 text-white px-4 py-2 flex justify-between items-center text-sm font-bold">
+                <span>Candidate Scratchpad / Notes</span>
+                <button onclick="toggleNotes()" class="text-slate-400 hover:text-white font-bold">&times;</button>
+            </div>
+            <div class="p-4">
+                <textarea class="w-full h-48 border border-slate-300 rounded p-2 text-sm text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500 resize-none font-mono" placeholder="Jot down clinical calculations, lab values, or reminders..."></textarea>
+                <div class="text-[10px] text-slate-400 mt-1">Notes clear automatically upon ending the exam session.</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 2026 Next Gen NCLEX Question Bank (Clinical Judgement Measurement Model - CJMM aligned)
+        const nclexQuestions = [
+            {
+                id: 1,
+                type: "Multiple Choice",
+                category: "Pharmacology & Parenteral Therapies",
+                stem: "A nurse is caring for a client who is receiving a continuous intravenous infusion of heparin for a deep vein thrombosis (DVT). Which of the following laboratory values should the nurse monitor to evaluate the effectiveness of the therapy?",
+                options: [
+                    "A) Prothrombin time (PT)",
+                    "B) Activated partial thromboplastin time (aPTT)",
+                    "C) International normalized ratio (INR)",
+                    "D) Platelet count"
+                ],
+                correct: 1, // Index 1 -> Option B
+                rationale: "Heparin affects the intrinsic pathway of coagulation. The aPTT is monitored to evaluate the therapeutic efficacy of continuous heparin infusion, with a target therapeutic range typically 1.5 to 2 times the baseline value. PT and INR are used to monitor warfarin therapy."
+            },
+            {
+                id: 2,
+                type: "Bow-Tie (NGN Format)",
+                category: "Reduction of Risk Potential / Medical-Surgical",
+                caseStudy: "<strong>Client Exhibit:</strong> A 68-year-old male is admitted to the progressive care unit following a myocardial infarction. He reports acute shortness of breath. Vital signs: BP 86/50 mmHg, HR 122/min, RR 28/min, SpO2 88% on room air. Auscultation reveals bilateral crackles midway up lung fields and an S3 heart sound.",
+                stem: "Based on the client's assessment findings, select the <strong>Condition</strong> most likely experiencing, the <strong>Action</strong> the nurse should prioritize, and the <strong>Parameter</strong> to monitor for improvement.",
+                optionsGroup: {
+                    condition: ["Cardiogenic Shock", "Hypovolemic Shock", "Pulmonary Embolism"],
+                    action: ["Administer IV Beta-Blockers", "Initiate Inotropic Support (Dobutamine)", "Prepare for Emergent Dialysis"],
+                    parameter: ["Urine output and peripheral perfusion", "Serum electrolyte panels", "Coagulation profile (aPTT)"]
+                },
+                correct: [0, 1, 0], // Indexes for condition, action, parameter
+                rationale: "The client exhibits signs of acute left ventricular failure progressing to cardiogenic shock secondary to MI (hypotension, tachycardia, crackles, S3 gallop). Inotropic support like dobutamine improves myocardial contractility and cardiac output, monitored via end-organ perfusion (urine output >30 mL/hr)."
+            },
+            {
+                id: 3,
+                type: "Matrix / Grid (Multiple Response)",
+                category: "Management of Care / Safety",
+                stem: "A charge nurse is reviewing client assignments for a newly licensed practical nurse (LPN). Which of the following client care activities are appropriate to delegate to the LPN? Select all that apply.",
+                options: [
+                    "A) Administering a scheduled subcutaneous insulin injection to a stable client with Type 2 diabetes mellitus.",
+                    "B) Developing a comprehensive nursing care plan for a client admitted with acute pancreatitis.",
+                    "C) Performing sterile dressing changes on a chronic Stage 3 pressure injury.",
+                    "D) Conducting initial admission assessment and baseline neurological checks.",
+                    "E) Reinforcing teaching regarding low-sodium dietary restrictions to a client with heart failure."
+                ],
+                correct: [0, 2, 4], // Indices A, C, E
+                rationale: "LPN scope of practice includes medication administration (subq/oral), dressing changes on stable wounds, and reinforcing prior RN health teaching. Initial assessments, care planning, and complex teaching must be performed exclusively by the RN."
+            },
+            {
+                id: 4,
+                type: "Multiple Choice (Calculations)",
+                category: "Pharmacology / Dosage Calculation",
+                stem: "A physician prescribes furosemide 40 mg IV push stat. Available is furosemide injection 10 mg/mL. How many mL should the nurse administer? (Round the answer to the nearest whole number. Do not include units in your answer box.)",
+                isNumeric: true,
+                correctValue: "4",
+                rationale: "Formula: (Desired / Stock) * Volume = (40 mg / 10 mg) * 1 mL = 4 mL."
+            },
+            {
+                id: 5,
+                type: "Multiple Choice",
+                category: "Psychiatric / Mental Health",
+                stem: "An emergency department nurse is evaluating a client who expresses feelings of hopelessness, states 'my family would be better off without me,' and has a loaded firearm secured at home. Which of the following actions is the nurse's highest priority?",
+                options: [
+                    "A) Explore the client's past coping mechanisms for handling stress.",
+                    "B) Establish a no-suicide contract before allowing discharge home.",
+                    "C) Ensure continuous one-to-one observation to maintain client safety.",
+                    "D) Provide telephone crisis hotline numbers upon discharge."
+                ],
+                correct: 2,
+                rationale: "Client safety is always the highest priority in acute psychiatric crises. A client expressing suicidal ideation with active intent and a plan requires constant direct observation (1:1 sitting) to prevent self-harm."
+            },
+            {
+                id: 6,
+                type: "Matrix / Grid (Multiple Response)",
+                category: "Pharmacology / Pediatric Nursing",
+                stem: "An RN is preparing to administer routine immunizations to a 2-month-old infant in the outpatient pediatric clinic. Which of the following vaccines are typically scheduled at this age visit? Select all that apply.",
+                options: [
+                    "A) Diphtheria, tetanus, and acellular pertussis (DTaP)",
+                    "B) Inactivated poliovirus vaccine (IPV)",
+                    "C) Measles, mumps, and rubella (MMR)",
+                    "D) Haemophilus influenzae type b (Hib)",
+                    "E) Pneumococcal conjugate vaccine (PCV13)",
+                    "F) Varicella vaccine"
+                ],
+                correct: [0, 1, 3, 4], // A, B, D, E
+                rationale: "At 2 months, infants receive the first series dose of DTaP, IPV, Hib, PCV13, Rotavirus (RV), and Hepatitis B (if dose 2 not given at 1 month). MMR and Varicella are contraindicated until at least 12 months of age."
+            },
+            {
+                id: 7,
+                type: "Multiple Choice",
+                category: "Physiological Adaptation",
+                stem: "A nurse is caring for a client with chronic kidney disease (CKD) who has a serum potassium level of 6.8 mEq/L. Which of the following ECG changes is the nurse primarily alert for in this client?",
+                options: [
+                    "A) Flattened T waves and prominent U waves",
+                    "B) Prolonged QT intervals with bradycardia",
+                    "C) Tall, peaked T waves and widened QRS complexes",
+                    "D) ST-segment elevation across lateral chest leads"
+                ],
+                correct: 2,
+                rationale: "Severe hyperkalemia (K+ > 5.0-6.0 mEq/L and above) causes characteristic cardiac conduction abnormalities, notably tall peaked T waves, prolonged PR intervals, widened QRS complexes, and potentially ventricular fibrillation or asystole."
+            },
+            {
+                id: 8,
+                type: "Multiple Choice",
+                category: "Basic Care and Comfort",
+                stem: "A nurse is assisting an immobile older adult client to reposition in bed. To prevent shearing forces and skin breakdown over the sacral prominence, which of the following techniques should the nurse implement?",
+                options: [
+                    "A) Elevating the head of the bed to 45 degrees while pulling the client upward.",
+                    "B) Using a drawsheet and lifting the client rather than sliding them across the linen.",
+                    "C) Massaging reddened bony prominences vigorously during each shift change.",
+                    "D) Positioning the client directly on top of their hip bone joints."
+                ],
+                correct: 1,
+                rationale: "Using a drawsheet to lift (rather than drag) the client reduces friction and shear forces. The head of the bed should be kept at or below 30 degrees when possible to prevent sliding and shear injuries. Massaging reddened prominences is contraindicated as it damages fragile tissue capillaries."
+            },
+            {
+                id: 9,
+                type: "Multiple Choice",
+                category: "Pharmacology / Emergency",
+                stem: "A client in the emergency department is diagnosed with acute anaphylactic shock after eating shellfish. Which of the following medications is the absolute first-line treatment that the nurse should administer immediately?",
+                options: [
+                    "A) Diphenhydramine IV",
+                    "B) Epinephrine intramuscular (IM)",
+                    "C) Methylprednisolone IV",
+                    "D) Albuterol nebulizer treatment"
+                ],
+                correct: 1,
+                rationale: "Epinephrine is the life-saving first-line drug for anaphylaxis due to its alpha-1 vasoconstrictive effects (reversing hypotension and edema) and beta-2 bronchodilatory effects. Antihistamines and steroids are adjunct therapies, not immediate substitutes."
+            },
+            {
+                id: 10,
+                type: "Multiple Choice",
+                category: "Health Promotion and Maintenance",
+                stem: "A nurse is providing discharge instructions to a client newly prescribed warfarin therapy for atrial fibrillation. Which of the following statements by the client indicates an understanding of dietary instructions?",
+                options: [
+                    "A) 'I should completely eliminate all green leafy vegetables from my diet.'",
+                    "B) 'I need to keep my daily intake of foods high in vitamin K consistent.'",
+                    "C) 'I can safely take high-dose garlic and ginger herbal supplements daily.'",
+                    "D) 'I should increase my consumption of cranberry juice while on this medication.'"
+                ],
+                correct: 1,
+                rationale: "Clients taking warfarin do not need to eliminate vitamin K foods entirely, but rather maintain a consistent, steady daily intake so that anticoagulant dosage remains stable. Garlic, ginger, and cranberry juice can potentiate bleeding risks and should be avoided or discussed with a provider."
+            },
+            {
+                id: 11,
+                type: "Multiple Choice",
+                category: "Safety and Infection Control",
+                stem: "A nurse is caring for a client admitted with pulmonary tuberculosis (TB). Which of the following infection control precautions must the nurse implement?",
+                options: [
+                    "A) Standard precautions alone with a surgical mask",
+                    "B) Contact precautions with gown and sterile gloves",
+                    "C) Airborne precautions with a negative pressure room and N95 respirator",
+                    "D) Droplet precautions with a private room and face shield"
+                ],
+                correct: 2,
+                rationale: "Tuberculosis is transmitted via droplet nuclei requiring Airborne Precautions. This requires placement in an Airborne Infection Isolation Room (AIIR) with negative pressure and staff wearing fitted N95 or PAPR respirators."
+            },
+            {
+                id: 12,
+                type: "Multiple Choice (Calculations)",
+                category: "Pharmacology / Critical Care",
+                stem: "A client with septic shock is prescribed norepinephrine infusion at 0.05 mcg/kg/min. The client's weight is 80 kg. The IV bag contains norepinephrine 4 mg in 250 mL D5W. Calculate the infusion rate in mL/hr. (Round to the nearest whole number.)",
+                isNumeric: true,
+                correctValue: "15",
+                rationale: "Step 1: Dose in mcg/min = 0.05 mcg * 80 kg = 4 mcg/min. Step 2: Dose in mcg/hr = 4 * 60 = 240 mcg/hr. Step 3: Concentration = 4 mg / 250 mL = 4000 mcg / 250 mL = 16 mcg/mL. Step 4: Flow rate = 240 mcg/hr / 16 mcg/mL = 15 mL/hr."
+            },
+            {
+                id: 13,
+                type: "Multiple Choice",
+                category: "Maternity / Newborn Nursing",
+                stem: "A nurse is assessing a postpartum client 4 hours following a vaginal delivery. The nurse notes the client's uterus is boggy, displaced to the right, and two fingerbreadths above the umbilicus. Moderate lochia rubra is present. Which of the following nursing actions is indicated first?",
+                options: [
+                    "A) Administer methylergonovine IM as prescribed.",
+                    "B) Assist the client to empty her urinary bladder.",
+                    "C) Increase the rate of IV lactated Ringer's infusion.",
+                    "D) Perform bimanual uterine compression."
+                ],
+                correct: 1,
+                rationale: "A boggy uterus displaced to the right strongly indicates bladder distension, which inhibits normal uterine involution and contraction. Assisting the client to void or catheterizing is the immediate primary intervention before administering oxytocics."
+            },
+            {
+                id: 14,
+                type: "Multiple Choice",
+                category: "Pharmacology",
+                stem: "A client with heart failure is prescribed digoxin 0.25 mg PO daily and furosemide 40 mg PO daily. Which of the following findings should the nurse immediately report to the healthcare provider?",
+                options: [
+                    "A) Serum potassium level of 3.2 mEq/L",
+                    "B) Blood pressure of 118/76 mmHg",
+                    "C) Heart rate of 78 beats per minute",
+                    "D) Mild baseline fatigue upon exertion"
+                ],
+                correct: 0,
+                rationale: "Hypokalemia (K+ < 3.5 mEq/L) potentiates digoxin binding at the myocardial Na+/K+ ATPase pump, significantly increasing the risk of lethal digitalis toxicity and arrhythmias. Furosemide causes potassium wasting, heightening this risk."
+            },
+            {
+                id: 15,
+                type: "Multiple Choice",
+                category: "Management of Care",
+                stem: "An RN is planning care on a medical-surgical unit. Which of the following client situations requires the nurse's immediate intervention?",
+                options: [
+                    "A) A client with chronic stable angina who requests sublingual nitroglycerin for mild chest discomfort.",
+                    "B) A client with Type 1 diabetes mellitus who has a capillary blood glucose level of 185 mg/dL before lunch.",
+                    "C) A client newly started on lisinopril who reports mild, annoying dry nocturnal cough.",
+                    "D) A postoperative client who reports sudden onset shortness of breath and pleuritic chest pain."
+                ],
+                correct: 3,
+                rationale: "Sudden shortness of breath and pleuritic chest pain in a postoperative client are classic hallmark signs of a life-threatening pulmonary embolism (PE), requiring immediate rapid response activation and respiratory support. The other options represent stable or expected conditions."
+            }
+        ];
+
+        let currentIdx = 0;
+        let userAnswers = {};
+        let examSubmitted = false;
+
+        // Timer initialization (5 hours standard NCLEX maximum duration)
+        let totalSeconds = 5 * 3600;
+        let timerHandle = null;
+        function startTimer() {
+            const timerDisplay = document.getElementById('timer');
+            timerHandle = setInterval(() => {
+                if (examSubmitted) {
+                    clearInterval(timerHandle);
+                    return;
+                }
+                if (totalSeconds > 0) {
+                    totalSeconds--;
+                    let hrs = Math.floor(totalSeconds / 3600);
+                    let mins = Math.floor((totalSeconds % 3600) / 60);
+                    let secs = totalSeconds % 60;
+                    timerDisplay.textContent = `${String(hrs).padStart(2,'0')}:${String(mins).padStart(2,'0')}:${String(secs).padStart(2,'0')}`;
+                } else {
+                    clearInterval(timerHandle);
+                    submitExam();
+                }
+            }, 1000);
+        }
+
+        function isMultiResponse(q) {
+            return Array.isArray(q.correct) && Array.isArray(q.options);
+        }
+
+        function loadQuestion() {
+            const q = nclexQuestions[currentIdx];
+            document.getElementById('current-question-num').textContent = currentIdx + 1;
+            document.getElementById('total-questions').textContent = nclexQuestions.length;
+            document.getElementById('question-type-badge').textContent = q.type;
+            // Stems may contain inline emphasis markup (e.g. the Bow-Tie item)
+            document.getElementById('question-stem').innerHTML = q.stem;
+
+            const caseContainer = document.getElementById('case-study-container');
+            const caseText = document.getElementById('case-study-text');
+            if (q.caseStudy) {
+                caseContainer.classList.remove('hidden');
+                caseText.innerHTML = q.caseStudy;
+            } else {
+                caseContainer.classList.add('hidden');
+            }
+
+            const optionsContainer = document.getElementById('options-container');
+            optionsContainer.innerHTML = '';
+
+            if (q.type.includes("Bow-Tie")) {
+                // Render NGN Bow-Tie interactive selectors
+                let html = `<div class="grid grid-cols-3 gap-4 pt-2">`;
+                const labels = ["Condition / Problem", "Immediate Action", "Monitoring Parameter"];
+                const keys = ["condition", "action", "parameter"];
+
+                keys.forEach((key, kidx) => {
+                    html += `<div class="bg-slate-50 border p-3 rounded space-y-2">
+                        <div class="font-bold text-xs uppercase text-slate-700">${labels[kidx]}</div>`;
+                    q.optionsGroup[key].forEach((opt, oidx) => {
+                        let checked = userAnswers[currentIdx] && userAnswers[currentIdx][kidx] === oidx ? 'checked' : '';
+                        html += `<label class="flex items-start space-x-2 text-xs cursor-pointer p-1.5 hover:bg-white rounded border border-transparent hover:border-slate-200">
+                            <input type="radio" name="bowtie-${kidx}" value="${oidx}" ${checked} onclick="saveBowTie(${kidx}, ${oidx})" class="mt-0.5">
+                            <span class="text-slate-800">${opt}</span>
+                        </label>`;
+                    });
+                    html += `</div>`;
+                });
+                html += `</div>`;
+                optionsContainer.innerHTML = html;
+            }
+            else if (q.isNumeric) {
+                let val = userAnswers[currentIdx] !== undefined ? userAnswers[currentIdx] : '';
+                optionsContainer.innerHTML = `
+                    <div class="py-4 space-y-2">
+                        <label class="block text-xs font-bold uppercase text-slate-600">Calculated Numeric Answer:</label>
+                        <input type="text" id="numeric-input" value="${val}" oninput="saveNumeric(this.value)" class="w-48 border-2 border-slate-400 p-2 text-lg font-mono rounded focus:border-blue-600 focus:outline-none" placeholder="Enter value">
+                    </div>
+                `;
+            }
+            else {
+                // Standard Multiple Choice or Matrix Multiple Response
+                const multi = isMultiResponse(q);
+                q.options.forEach((opt, idx) => {
+                    let isChecked = false;
+                    if (multi) {
+                        if (userAnswers[currentIdx] && userAnswers[currentIdx].includes(idx)) isChecked = true;
+                        optionsContainer.innerHTML += `
+                            <label class="flex items-center space-x-3 p-3 rounded border border-slate-200 hover:bg-slate-50 cursor-pointer transition">
+                                <input type="checkbox" name="nclex-opt" value="${idx}" ${isChecked ? 'checked' : ''} onchange="saveMultiResponse(${idx})" class="rounded text-blue-600 focus:ring-blue-500">
+                                <span class="text-slate-800 text-sm font-medium">${opt}</span>
+                            </label>
+                        `;
+                    } else {
+                        if (userAnswers[currentIdx] === idx) isChecked = true;
+                        optionsContainer.innerHTML += `
+                            <label class="flex items-center space-x-3 p-3 rounded border border-slate-200 hover:bg-slate-50 cursor-pointer transition">
+                                <input type="radio" name="nclex-opt" value="${idx}" ${isChecked ? 'checked' : ''} onchange="saveSingleChoice(${idx})" class="text-blue-600 focus:ring-blue-500">
+                                <span class="text-slate-800 text-sm font-medium">${opt}</span>
+                            </label>
+                        `;
+                    }
+                });
+            }
+
+            // Update button label on final question
+            const nextBtn = document.getElementById('next-btn');
+            if (currentIdx === nclexQuestions.length - 1) {
+                nextBtn.textContent = "Finish & Submit Exam";
+                nextBtn.className = "bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2.5 rounded font-bold text-sm shadow transition tracking-wide";
+            } else {
+                nextBtn.textContent = "Next Item →";
+                nextBtn.className = "bg-blue-700 hover:bg-blue-800 text-white px-6 py-2.5 rounded font-bold text-sm shadow transition tracking-wide";
+            }
+        }
+
+        function saveSingleChoice(idx) {
+            userAnswers[currentIdx] = idx;
+        }
+
+        function saveNumeric(val) {
+            userAnswers[currentIdx] = val.trim();
+        }
+
+        function saveMultiResponse(idx) {
+            if (!userAnswers[currentIdx]) userAnswers[currentIdx] = [];
+            let arr = userAnswers[currentIdx];
+            let pos = arr.indexOf(idx);
+            if (pos > -1) {
+                arr.splice(pos, 1);
+            } else {
+                arr.push(idx);
+                arr.sort((a, b) => a - b);
+            }
+        }
+
+        function saveBowTie(kidx, oidx) {
+            if (!userAnswers[currentIdx]) userAnswers[currentIdx] = [null, null, null];
+            userAnswers[currentIdx][kidx] = oidx;
+        }
+
+        function handleNextQuestion() {
+            if (currentIdx < nclexQuestions.length - 1) {
+                currentIdx++;
+                loadQuestion();
+            } else {
+                submitExam();
+            }
+        }
+
+        function submitExam() {
+            if (examSubmitted) return;
+            examSubmitted = true;
+            let score = 0;
+            let reviewHtml = '';
+
+            nclexQuestions.forEach((q, idx) => {
+                let userAns = userAnswers[idx];
+                let isCorrect = false;
+
+                if (q.type.includes("Bow-Tie")) {
+                    if (Array.isArray(userAns) && userAns.toString() === q.correct.toString()) {
+                        isCorrect = true;
+                    }
+                } else if (q.isNumeric) {
+                    if (userAns === q.correctValue) {
+                        isCorrect = true;
+                    }
+                } else if (Array.isArray(q.correct)) {
+                    if (Array.isArray(userAns) && userAns.length === q.correct.length && userAns.every((val, i) => val === q.correct[i])) {
+                        isCorrect = true;
+                    }
+                } else {
+                    if (userAns === q.correct) {
+                        isCorrect = true;
+                    }
+                }
+
+                if (isCorrect) score++;
+
+                reviewHtml += `
+                    <div class="p-4 border rounded-lg bg-slate-50 space-y-2 mb-4">
+                        <div class="flex justify-between items-center text-xs font-bold">
+                            <span class="text-slate-600">Question ${idx + 1} (${q.category})</span>
+                            <span class="${isCorrect ? 'text-emerald-700 bg-emerald-100' : 'text-rose-700 bg-rose-100'} px-2 py-0.5 rounded uppercase">${isCorrect ? 'Correct' : 'Incorrect'}</span>
+                        </div>
+                        <div class="text-slate-900 font-medium text-sm">${q.stem}</div>
+                        <div class="text-xs text-slate-700 bg-white p-3 rounded border border-slate-200">
+                            <strong>Clinical Rationale:</strong> ${q.rationale}
+                        </div>
+                    </div>
+                `;
+            });
+
+            const percent = Math.round((score / nclexQuestions.length) * 100);
+            const passStatus = percent >= 73 ? "PASS (Demonstrates Competent Entry-Level Clinical Judgment)" : "NEAR PASS / REVIEW RECOMMENDED";
+
+            document.querySelector('main').innerHTML = `
+                <div class="flex-1 bg-white exam-border rounded-lg flex flex-col overflow-hidden p-8 overflow-y-auto">
+                    <div class="max-w-3xl mx-auto w-full space-y-6">
+                        <div class="text-center space-y-2 border-b pb-6">
+                            <h2 class="text-2xl font-bold text-slate-900">Exam Results Summary</h2>
+                            <p class="text-sm text-slate-600">Simulated 2026 Next Generation NCLEX-RN Standard</p>
+                            <div class="inline-block mt-4 px-6 py-3 rounded-lg text-lg font-bold ${percent >= 73 ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}">
+                                Score: ${score} / ${nclexQuestions.length} (${percent}%) &mdash; ${passStatus}
+                            </div>
+                        </div>
+                        <div class="space-y-4">
+                            <h3 class="font-bold text-slate-800 text-base">Comprehensive Item Review & Rationales</h3>
+                            ${reviewHtml}
+                        </div>
+                        <div class="text-center pt-4">
+                            <button onclick="location.reload()" class="bg-blue-700 hover:bg-blue-800 text-white font-bold px-6 py-3 rounded shadow">Start New Simulation</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Calculator Modal Logic
+        function toggleCalculator() {
+            const modal = document.getElementById('calculator-modal');
+            modal.classList.toggle('hidden');
+        }
+
+        let calcVal = "0";
+        function calcNum(n) {
+            if (calcVal === "0") calcVal = n;
+            else calcVal += n;
+            document.getElementById('calc-display').value = calcVal;
+        }
+        function calcOp(op) {
+            calcVal += ` ${op} `;
+            document.getElementById('calc-display').value = calcVal;
+        }
+        function calcEquals() {
+            // Only arithmetic on the digits/operators the keypad can produce is evaluated
+            if (!/^[\d\s.+\-*/]+$/.test(calcVal)) {
+                document.getElementById('calc-display').value = "Error";
+                calcVal = "0";
+                return;
+            }
+            try {
+                const result = Function(`"use strict"; return (${calcVal});`)();
+                calcVal = Number.isFinite(result) ? String(result) : "Error";
+                document.getElementById('calc-display').value = calcVal;
+                if (calcVal === "Error") calcVal = "0";
+            } catch (e) {
+                document.getElementById('calc-display').value = "Error";
+                calcVal = "0";
+            }
+        }
+        function calcClear() {
+            calcVal = "0";
+            document.getElementById('calc-display').value = calcVal;
+        }
+
+        // Notes Modal Logic
+        function toggleNotes() {
+            const modal = document.getElementById('notes-modal');
+            modal.classList.toggle('hidden');
+        }
+
+        // Initialize exam on load
+        window.onload = function() {
+            startTimer();
+            loadQuestion();
+        };
+    </script>
+</body>
+</html>
