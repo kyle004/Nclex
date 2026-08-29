@@ -45,9 +45,13 @@
             <span class="text-xs bg-blue-600 px-2 py-1 rounded font-mono uppercase">2026 Next Gen Standards (NGN)</span>
         </div>
         <div class="flex items-center space-x-6 text-sm">
-            <div class="flex items-center space-x-2 bg-slate-800 px-3 py-1.5 rounded border border-slate-700">
+            <div id="timer-wrap" class="flex items-center space-x-2 bg-slate-800 px-3 py-1.5 rounded border border-slate-700">
                 <span class="text-slate-400 font-medium">Time Remaining:</span>
                 <span id="timer" class="font-mono font-bold text-amber-400 text-base">05:00:00</span>
+            </div>
+            <div id="study-wrap" class="hidden flex items-center space-x-2 bg-slate-800 px-3 py-1.5 rounded border border-emerald-700">
+                <span class="text-emerald-400 font-medium uppercase text-xs tracking-wide">Study Mode</span>
+                <span id="study-score" class="font-mono font-bold text-emerald-300 text-base">0 / 0</span>
             </div>
             <button onclick="toggleCalculator()" class="bg-slate-700 hover:bg-slate-600 px-3 py-1.5 rounded text-xs font-semibold transition border border-slate-600 flex items-center space-x-1.5">
                 <span>&#129518; Calculator</span>
@@ -80,20 +84,54 @@
 
                 <div id="options-container" class="space-y-3 pt-2">
                     </div>
+
+                <div id="feedback-panel" class="hidden"></div>
             </div>
 
             <div class="bg-slate-50 px-6 py-4 border-t border-slate-200 flex justify-between items-center">
-                <div class="text-xs text-slate-500 font-medium">
+                <div id="nav-note" class="text-xs text-slate-500 font-medium">
                     Note: Once you click Next, you cannot return to previous items.
                 </div>
                 <div class="flex space-x-3">
-                    <button id="next-btn" onclick="handleNextQuestion()" class="bg-blue-700 hover:bg-blue-800 text-white px-6 py-2.5 rounded font-bold text-sm shadow transition tracking-wide">
+                    <button id="prev-btn" onclick="handlePrevQuestion()" class="hidden bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 px-5 py-2.5 rounded font-bold text-sm shadow-sm transition tracking-wide">
+                        &larr; Previous
+                    </button>
+                    <button id="next-btn" onclick="handlePrimaryAction()" class="bg-blue-700 hover:bg-blue-800 text-white px-6 py-2.5 rounded font-bold text-sm shadow transition tracking-wide">
                         Next Item &rarr;
                     </button>
                 </div>
             </div>
         </section>
     </main>
+
+    <div id="mode-select" class="fixed inset-0 bg-slate-900/95 flex items-center justify-center z-50 p-6">
+        <div class="bg-white rounded-lg shadow-2xl max-w-3xl w-full border border-slate-300 overflow-hidden">
+            <div class="bg-slate-800 text-white px-6 py-4">
+                <h2 class="text-lg font-bold tracking-wide">Select a Practice Mode</h2>
+                <p class="text-xs text-slate-300 mt-1">Both modes use the same 15-item Next Gen question bank.</p>
+            </div>
+            <div class="p-6 grid md:grid-cols-2 gap-4">
+                <button onclick="startSession('exam')" class="text-left border-2 border-slate-200 hover:border-blue-600 hover:bg-blue-50 rounded-lg p-5 transition group">
+                    <div class="font-bold text-slate-900 text-base mb-2 group-hover:text-blue-800">Exam Mode</div>
+                    <ul class="text-xs text-slate-600 space-y-1.5 leading-relaxed">
+                        <li>&bull; 5-hour countdown timer</li>
+                        <li>&bull; Forward-only navigation</li>
+                        <li>&bull; No feedback until the exam is submitted</li>
+                        <li>&bull; Full score report and rationales at the end</li>
+                    </ul>
+                </button>
+                <button onclick="startSession('study')" class="text-left border-2 border-slate-200 hover:border-emerald-600 hover:bg-emerald-50 rounded-lg p-5 transition group">
+                    <div class="font-bold text-slate-900 text-base mb-2 group-hover:text-emerald-800">Study Mode (Tutor)</div>
+                    <ul class="text-xs text-slate-600 space-y-1.5 leading-relaxed">
+                        <li>&bull; Check each answer as you go</li>
+                        <li>&bull; Immediate correct / incorrect result</li>
+                        <li>&bull; Correct answer highlighted with its rationale</li>
+                        <li>&bull; Untimed, and you can revisit earlier items</li>
+                    </ul>
+                </button>
+            </div>
+        </div>
+    </div>
 
     <div id="calculator-modal" class="hidden fixed inset-0 bg-black/40 flex items-center justify-center z-50">
         <div class="bg-white rounded-lg shadow-2xl w-72 border border-slate-300 overflow-hidden">
@@ -352,9 +390,12 @@
 
         let currentIdx = 0;
         let userAnswers = {};
+        let checkedItems = {};   // Study mode: items whose feedback has been revealed
+        let itemResults = {};    // Study mode: idx -> graded result, for the running score
+        let mode = 'exam';       // 'exam' | 'study'
         let examSubmitted = false;
 
-        // Timer initialization (5 hours standard NCLEX maximum duration)
+        // Timer initialization (5 hours standard NCLEX maximum duration). Exam mode only.
         let totalSeconds = 5 * 3600;
         let timerHandle = null;
         function startTimer() {
@@ -377,8 +418,69 @@
             }, 1000);
         }
 
+        function startSession(selectedMode) {
+            mode = selectedMode;
+            document.getElementById('mode-select').classList.add('hidden');
+            if (mode === 'study') {
+                document.getElementById('timer-wrap').classList.add('hidden');
+                document.getElementById('study-wrap').classList.remove('hidden');
+                document.getElementById('nav-note').textContent =
+                    'Study Mode: check each answer to see the rationale before moving on. You may revisit earlier items.';
+                updateStudyScore();
+            } else {
+                startTimer();
+            }
+            loadQuestion();
+        }
+
         function isMultiResponse(q) {
             return Array.isArray(q.correct) && Array.isArray(q.options);
+        }
+
+        // Shared grader: used for immediate Study Mode feedback and for the final score report.
+        function gradeQuestion(q, userAns) {
+            if (q.type.includes("Bow-Tie")) {
+                return Array.isArray(userAns) && userAns.toString() === q.correct.toString();
+            }
+            if (q.isNumeric) {
+                return userAns === q.correctValue;
+            }
+            if (Array.isArray(q.correct)) {
+                return Array.isArray(userAns) && userAns.length === q.correct.length
+                    && userAns.every((val, i) => val === q.correct[i]);
+            }
+            return userAns === q.correct;
+        }
+
+        function hasResponse(q, userAns) {
+            if (q.type.includes("Bow-Tie")) {
+                return Array.isArray(userAns) && userAns.every(v => v !== null && v !== undefined);
+            }
+            if (q.isNumeric) return typeof userAns === 'string' && userAns.length > 0;
+            if (Array.isArray(q.correct)) return Array.isArray(userAns) && userAns.length > 0;
+            return typeof userAns === 'number';
+        }
+
+        const BOWTIE_KEYS = ["condition", "action", "parameter"];
+        const BOWTIE_LABELS = ["Condition / Problem", "Immediate Action", "Monitoring Parameter"];
+
+        function describeAnswer(q, ans) {
+            if (!hasResponse(q, ans)) return "<em class='text-slate-500'>No response recorded</em>";
+            if (q.type.includes("Bow-Tie")) {
+                return BOWTIE_KEYS.map((key, k) => `${BOWTIE_LABELS[k]}: ${q.optionsGroup[key][ans[k]]}`).join('<br>');
+            }
+            if (q.isNumeric) return ans;
+            if (Array.isArray(q.correct)) return ans.map(i => q.options[i]).join('<br>');
+            return q.options[ans];
+        }
+
+        function describeCorrect(q) {
+            if (q.type.includes("Bow-Tie")) {
+                return BOWTIE_KEYS.map((key, k) => `${BOWTIE_LABELS[k]}: ${q.optionsGroup[key][q.correct[k]]}`).join('<br>');
+            }
+            if (q.isNumeric) return q.correctValue;
+            if (Array.isArray(q.correct)) return q.correct.map(i => q.options[i]).join('<br>');
+            return q.options[q.correct];
         }
 
         function loadQuestion() {
@@ -404,12 +506,10 @@
             if (q.type.includes("Bow-Tie")) {
                 // Render NGN Bow-Tie interactive selectors
                 let html = `<div class="grid grid-cols-3 gap-4 pt-2">`;
-                const labels = ["Condition / Problem", "Immediate Action", "Monitoring Parameter"];
-                const keys = ["condition", "action", "parameter"];
 
-                keys.forEach((key, kidx) => {
+                BOWTIE_KEYS.forEach((key, kidx) => {
                     html += `<div class="bg-slate-50 border p-3 rounded space-y-2">
-                        <div class="font-bold text-xs uppercase text-slate-700">${labels[kidx]}</div>`;
+                        <div class="font-bold text-xs uppercase text-slate-700">${BOWTIE_LABELS[kidx]}</div>`;
                     q.optionsGroup[key].forEach((opt, oidx) => {
                         let checked = userAnswers[currentIdx] && userAnswers[currentIdx][kidx] === oidx ? 'checked' : '';
                         html += `<label class="flex items-start space-x-2 text-xs cursor-pointer p-1.5 hover:bg-white rounded border border-transparent hover:border-slate-200">
@@ -456,15 +556,123 @@
                 });
             }
 
-            // Update button label on final question
+            // Study Mode: an item already checked reopens with its feedback intact
+            if (mode === 'study' && checkedItems[currentIdx]) {
+                revealAnswer(q);
+            } else {
+                document.getElementById('feedback-panel').classList.add('hidden');
+                document.getElementById('feedback-panel').innerHTML = '';
+            }
+
+            updateNavButtons();
+        }
+
+        function updateNavButtons() {
             const nextBtn = document.getElementById('next-btn');
-            if (currentIdx === nclexQuestions.length - 1) {
-                nextBtn.textContent = "Finish & Submit Exam";
+            const prevBtn = document.getElementById('prev-btn');
+            const isLast = currentIdx === nclexQuestions.length - 1;
+
+            if (mode === 'study' && currentIdx > 0) {
+                prevBtn.classList.remove('hidden');
+            } else {
+                prevBtn.classList.add('hidden');
+            }
+
+            if (mode === 'study' && !checkedItems[currentIdx]) {
+                nextBtn.textContent = "Check Answer";
+                nextBtn.className = "bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2.5 rounded font-bold text-sm shadow transition tracking-wide";
+            } else if (isLast) {
+                nextBtn.textContent = mode === 'study' ? "Finish & View Summary" : "Finish & Submit Exam";
                 nextBtn.className = "bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2.5 rounded font-bold text-sm shadow transition tracking-wide";
             } else {
                 nextBtn.textContent = "Next Item →";
                 nextBtn.className = "bg-blue-700 hover:bg-blue-800 text-white px-6 py-2.5 rounded font-bold text-sm shadow transition tracking-wide";
             }
+        }
+
+        function updateStudyScore() {
+            const answered = Object.keys(itemResults).length;
+            const correct = Object.values(itemResults).filter(Boolean).length;
+            document.getElementById('study-score').textContent = `${correct} / ${answered}`;
+        }
+
+        // Study Mode: grade the current item, lock it, and show the rationale.
+        function revealAnswer(q) {
+            const isCorrect = itemResults[currentIdx];
+            const optionsContainer = document.getElementById('options-container');
+
+            // Lock the item and mark correct / incorrectly chosen options
+            optionsContainer.querySelectorAll('input').forEach(input => {
+                input.disabled = true;
+                if (input.type === 'text') {
+                    input.className = input.className.replace('border-slate-400', '') +
+                        (isCorrect ? ' border-emerald-500 bg-emerald-50' : ' border-rose-500 bg-rose-50');
+                    return;
+                }
+                const value = parseInt(input.value, 10);
+                let isCorrectChoice;
+                if (q.type.includes("Bow-Tie")) {
+                    const kidx = parseInt(input.name.split('-')[1], 10);
+                    isCorrectChoice = q.correct[kidx] === value;
+                } else {
+                    const correctSet = Array.isArray(q.correct) ? q.correct : [q.correct];
+                    isCorrectChoice = correctSet.includes(value);
+                }
+                const label = input.closest('label');
+                if (!label) return;
+                if (isCorrectChoice) {
+                    label.className += ' bg-emerald-50 border-emerald-500';
+                } else if (input.checked) {
+                    label.className += ' bg-rose-50 border-rose-400';
+                }
+            });
+
+            const panel = document.getElementById('feedback-panel');
+            panel.className = `mt-6 rounded-lg border-2 overflow-hidden ${isCorrect ? 'border-emerald-500' : 'border-rose-400'}`;
+            panel.innerHTML = `
+                <div class="${isCorrect ? 'bg-emerald-600' : 'bg-rose-500'} text-white px-4 py-2 font-bold text-sm uppercase tracking-wide">
+                    ${isCorrect ? '&#10003; Correct' : '&#10007; Incorrect'}
+                </div>
+                <div class="bg-white p-4 space-y-3 text-sm">
+                    <div class="grid md:grid-cols-2 gap-3">
+                        <div class="bg-slate-50 border border-slate-200 rounded p-3">
+                            <div class="text-[10px] font-bold uppercase tracking-wide text-slate-500 mb-1">Your Response</div>
+                            <div class="text-slate-800 leading-relaxed">${describeAnswer(q, userAnswers[currentIdx])}</div>
+                        </div>
+                        <div class="bg-emerald-50 border border-emerald-200 rounded p-3">
+                            <div class="text-[10px] font-bold uppercase tracking-wide text-emerald-700 mb-1">Correct Response</div>
+                            <div class="text-slate-800 leading-relaxed">${describeCorrect(q)}</div>
+                        </div>
+                    </div>
+                    <div class="border-t pt-3">
+                        <div class="text-[10px] font-bold uppercase tracking-wide text-slate-500 mb-1">Clinical Rationale</div>
+                        <div class="text-slate-700 leading-relaxed">${q.rationale}</div>
+                    </div>
+                    <div class="text-[11px] text-slate-500 italic">Test plan category: ${q.category}</div>
+                </div>
+            `;
+            panel.classList.remove('hidden');
+        }
+
+        function checkAnswer() {
+            const q = nclexQuestions[currentIdx];
+            const panel = document.getElementById('feedback-panel');
+
+            if (!hasResponse(q, userAnswers[currentIdx])) {
+                panel.className = 'mt-6 rounded border border-amber-300 bg-amber-50 text-amber-800 text-sm px-4 py-3 font-medium';
+                panel.textContent = q.type.includes("Bow-Tie")
+                    ? 'Select one option in each of the three columns before checking your answer.'
+                    : 'Select or enter an answer before checking your answer.';
+                panel.classList.remove('hidden');
+                return;
+            }
+
+            checkedItems[currentIdx] = true;
+            itemResults[currentIdx] = gradeQuestion(q, userAnswers[currentIdx]);
+            updateStudyScore();
+            revealAnswer(q);
+            updateNavButtons();
+            panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         }
 
         function saveSingleChoice(idx) {
@@ -492,12 +700,24 @@
             userAnswers[currentIdx][kidx] = oidx;
         }
 
-        function handleNextQuestion() {
+        function handlePrimaryAction() {
+            // Study Mode grades the item first; the same button then advances.
+            if (mode === 'study' && !checkedItems[currentIdx]) {
+                checkAnswer();
+                return;
+            }
             if (currentIdx < nclexQuestions.length - 1) {
                 currentIdx++;
                 loadQuestion();
             } else {
                 submitExam();
+            }
+        }
+
+        function handlePrevQuestion() {
+            if (mode === 'study' && currentIdx > 0) {
+                currentIdx--;
+                loadQuestion();
             }
         }
 
@@ -508,27 +728,7 @@
             let reviewHtml = '';
 
             nclexQuestions.forEach((q, idx) => {
-                let userAns = userAnswers[idx];
-                let isCorrect = false;
-
-                if (q.type.includes("Bow-Tie")) {
-                    if (Array.isArray(userAns) && userAns.toString() === q.correct.toString()) {
-                        isCorrect = true;
-                    }
-                } else if (q.isNumeric) {
-                    if (userAns === q.correctValue) {
-                        isCorrect = true;
-                    }
-                } else if (Array.isArray(q.correct)) {
-                    if (Array.isArray(userAns) && userAns.length === q.correct.length && userAns.every((val, i) => val === q.correct[i])) {
-                        isCorrect = true;
-                    }
-                } else {
-                    if (userAns === q.correct) {
-                        isCorrect = true;
-                    }
-                }
-
+                const isCorrect = gradeQuestion(q, userAnswers[idx]);
                 if (isCorrect) score++;
 
                 reviewHtml += `
@@ -538,8 +738,10 @@
                             <span class="${isCorrect ? 'text-emerald-700 bg-emerald-100' : 'text-rose-700 bg-rose-100'} px-2 py-0.5 rounded uppercase">${isCorrect ? 'Correct' : 'Incorrect'}</span>
                         </div>
                         <div class="text-slate-900 font-medium text-sm">${q.stem}</div>
-                        <div class="text-xs text-slate-700 bg-white p-3 rounded border border-slate-200">
-                            <strong>Clinical Rationale:</strong> ${q.rationale}
+                        <div class="text-xs text-slate-700 bg-white p-3 rounded border border-slate-200 space-y-2">
+                            <div><strong>Your response:</strong> ${describeAnswer(q, userAnswers[idx])}</div>
+                            <div><strong>Correct response:</strong> ${describeCorrect(q)}</div>
+                            <div><strong>Clinical Rationale:</strong> ${q.rationale}</div>
                         </div>
                     </div>
                 `;
@@ -552,7 +754,7 @@
                 <div class="flex-1 bg-white exam-border rounded-lg flex flex-col overflow-hidden p-8 overflow-y-auto">
                     <div class="max-w-3xl mx-auto w-full space-y-6">
                         <div class="text-center space-y-2 border-b pb-6">
-                            <h2 class="text-2xl font-bold text-slate-900">Exam Results Summary</h2>
+                            <h2 class="text-2xl font-bold text-slate-900">${mode === 'study' ? 'Study Session Summary' : 'Exam Results Summary'}</h2>
                             <p class="text-sm text-slate-600">Simulated 2026 Next Generation NCLEX-RN Standard</p>
                             <div class="inline-block mt-4 px-6 py-3 rounded-lg text-lg font-bold ${percent >= 73 ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}">
                                 Score: ${score} / ${nclexQuestions.length} (${percent}%) &mdash; ${passStatus}
@@ -614,9 +816,8 @@
             modal.classList.toggle('hidden');
         }
 
-        // Initialize exam on load
+        // The exam begins once a practice mode is chosen on the start screen
         window.onload = function() {
-            startTimer();
             loadQuestion();
         };
     </script>
